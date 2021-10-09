@@ -1,0 +1,62 @@
+version: 2.1
+
+
+prelude: &prelude
+  docker:
+    - image: cimg/node:16.10.0
+  working_directory: ~/app
+
+
+commands:
+
+  load_environment_from_cache:
+    steps:
+      - restore_cache:
+          key: package-lock-{{ checksum "package-lock.json" }}
+
+  install_dependencies:
+    steps:
+      - run:
+          name: Install dependencies from `package-lock.json`
+          command: npm ci
+
+  save_environment_to_cache:
+    steps:
+      - save_cache:
+          key: package-lock-{{ checksum "package-lock.json" }}
+          paths:
+            - ~/app/node_modules
+
+
+jobs:
+
+  set_up_environment:
+    <<: *prelude
+    steps:
+      - checkout
+      - load_environment_from_cache
+      - install_dependencies
+      - save_environment_to_cache
+
+  publish:
+    <<: *prelude
+    steps:
+      - checkout
+      - load_environment_from_cache
+      - run:
+          name: Publish extension to VSCode Marketplace
+          command: npm run publish
+
+
+workflows:
+
+  publish:
+    jobs:
+      - set_up_environment
+      - manual_approval_to_publish:
+          type: approval
+          requires:
+            - set_up_environment
+      - publish:
+          requires:
+            - manual_approval_to_publish

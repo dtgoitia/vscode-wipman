@@ -53,6 +53,12 @@
 
 ## Release Notes
 
+### 0.0.2
+
+* Remove information pop-up used for debugging
+* Update docs: fix explanation
+* Update docs: fix typos in URLs
+
 ### 0.0.1
 
 * First working POC.

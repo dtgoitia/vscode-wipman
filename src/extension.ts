@@ -138,7 +138,6 @@ async function readGroupsFromWipConfig(): Promise<Group[]> {
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-  vscode.window.showInformationMessage("DEBUG: wipman extension loaded");
   const language: DocumentSelector = { language: "markdown" };
   const triggerCharacters = ["#"];
 

@@ -24,11 +24,11 @@
                          # see `npm version --help` for more options
       ```
     
-      Check [published versions](https://marketplace.visualstudio.com/items?itemName=dtgoitia.wpiman) if you are unsure about whether you need to bump the version or not.
+      Check [published versions](https://marketplace.visualstudio.com/items?itemName=dtgoitia.wipman) if you are unsure about whether you need to bump the version or not.
   
   1. Push latest changes: `git push`
 
-  1. Go to [CI](https://app.circleci.com/pipelines/github/dtgoitia/vscode-wpiman) and **manually approve** to publish.
+  1. Go to [CI](https://app.circleci.com/pipelines/github/dtgoitia/vscode-wipman) and **manually approve** to publish.
 
 * (**AVOID WHEN POSSIBLE**, use CI instead)
   Manually publish the extension:

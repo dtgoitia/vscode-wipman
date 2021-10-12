@@ -45,7 +45,7 @@
                              # see `npm version --help` for more options
       ```
 
-  This will bundle the extension with `webpack` (same as `npm run vscode:prepublish`) and upload it to the extension marketplace.
+  This will compile the extension with `typescript` (same as `npm run vscode:prepublish`) and upload it to the extension marketplace.
 
 ## Known Issues
 

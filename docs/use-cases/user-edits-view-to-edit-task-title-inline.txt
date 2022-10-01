@@ -1,0 +1,74 @@
+# visualize and edit with sequencediagram.org
+title Edit Task title inline in View
+
+actor User
+
+participant handleViewFileUpdated
+participant "TransactionManager" as Transaction
+participant "TaskManager" as Task
+participant "ViewManager" as View
+participant "FileManager" as File
+
+note over User: edit view file
+note over User: save view file
+
+activate handleViewFileUpdated
+  handleViewFileUpdated->View:getView(view.id)
+  View-->handleViewFileUpdated:last View
+  note over handleViewFileUpdated: extract Task IDs from last View
+  note over handleViewFileUpdated: find Tasks deleted from View
+  note over handleViewFileUpdated: find Tasks added to View
+
+  loop for each Task to add
+    note over handleViewFileUpdated,File:(documented elsewhere)
+  end
+
+  loop for each Task to delete
+    note over handleViewFileUpdated,File:(documented elsewhere)
+  end
+
+  note over handleViewFileUpdated: read View from View file
+  
+  activate View
+    handleViewFileUpdated->View: updateView(view, publish=true)
+
+    note over View: get last in-memory View by ID
+    note over View: compare
+    note over View: find changed titles and tags
+    note over View: reindex view by new tags
+    note over View: overwrite in-memory View
+    loop for each changed Task title
+      note over View: get Task ID from View line
+      View->Task:getTask(taskId)
+      Task-->View:Task
+      note over View: update Task title
+      note over View: buffer change for later
+    end
+    
+    View-->File:ViewTagsUpdated
+    activate File
+      File->View:getView(viewId)
+      View-->File:View
+      note over File:get View path
+      note over File:get Tasks by tag
+      note over File:update View file
+      note over File:read View file
+      File->View:updateView(view, publish=false)
+      File->]:FileUpdated
+    deactivate File
+    
+    loop for each buffered Task Title change
+      View->Task:updateTask(task)
+      activate Task
+      	note over Task: early exit if no Task changes
+        note over Task: reindex as per new tags
+        note over Task: overwrite Task
+        Task-->View:TaskUpdated
+          note over View: all should match in-memory, stop
+        Task-->File:TaskUpdated
+        note over File:(TODO)
+      deactivate Task
+    end
+  deactivate View
+
+deactivate handleViewFileUpdated

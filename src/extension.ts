@@ -1,153 +1,160 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import * as vscode from "vscode";
-import { DocumentSelector } from "vscode";
-import { TextDecoder } from "util";
+import getVSCodeOnSaveHandler from "./commands/onSave";
+import { todo, unreachable } from "./devex/errors";
+import { Config } from "./domain/config";
+import { initialize } from "./domain/extension-api";
+import { isWipmanDirectory, IsWipmanDirectoryOutcome } from "./domain/files/files";
+import { verify } from "./domain/verify";
+import { Path } from "./io";
 import log from "./logs";
-import { fileExists } from "./io";
 
-const HOME_PATH = `${os.homedir()}`;
-
-type Group = string; // e.g.: "foo" --> will be "#g:foo"
-
-class GroupTagCompletionProvider implements vscode.CompletionItemProvider {
-  constructor(private readonly group: Group) {}
-
-  public provideCompletionItems(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-    _token: vscode.CancellationToken,
-  ): vscode.ProviderResult<vscode.CompletionItem[]> {
-    const kind = vscode.CompletionItemKind.Text;
-    const label = this.group; // label shown in the completion pop up
-    const itemA = new vscode.CompletionItem(label, kind);
-    itemA.filterText = this.group; // user input is matched against this
-    itemA.insertText = `g:${this.group}`; // string inserted after the triggerCharacters
-    return [itemA];
-  }
+interface WorkspaceConfiguration {
+  wipmanDir: Path;
+  debug: boolean | undefined;
 }
+function parseVSCodeConfig({ raw }: { raw: vscode.WorkspaceConfiguration }): WorkspaceConfiguration {
+  log.debug(raw)
 
-function getGroupTagCompletionProvider(group: Group): GroupTagCompletionProvider {
-  const provider = new GroupTagCompletionProvider(group);
-  return provider;
-}
+  const workspaces = (vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[])
+  const cwd = new Path(workspaces[0].uri.fsPath);
 
-function buildCompletionsForGroupTags(
-  groups: Group[],
-  language: DocumentSelector,
-  triggerCharacters: string[],
-): vscode.Disposable[] {
-  const autocompletionPerGroupTag = groups
-    .map(getGroupTagCompletionProvider)
-    .map((provider: GroupTagCompletionProvider) => {
-      const groupTagCompletion = vscode.languages.registerCompletionItemProvider(
-        language,
-        provider,
-        ...triggerCharacters,
-      );
-      return groupTagCompletion;
-    });
+  // TODO: make this more versatile to consider more contributes - if any comes along
 
-  return autocompletionPerGroupTag;
-}
-
-function throwError(message: string): void {
-  log.error(message);
-  throw new Error(message);
-}
-
-async function readFile(path: string): Promise<string> {
-  return new Promise(resolve => {
-    fs.readFile(path, (_, raw: ArrayBuffer) => {
-      const decoder = new TextDecoder();
-      const text = decoder.decode(raw);
-      resolve(text);
-    });
-  });
-}
-
-export function removeTrailingCommas(withCommas: string): string {
-  return withCommas
-    .replace(/(\s\s)+"/g, `"`)
-    .replace(/(\n)*/g, "")
-    .replace(/,\s*]/g, "]")
-    .replace(/,\s*}/g, "}");
-}
-
-async function loadJsonWithTrailingCommas(path: string): Promise<RawConfig> {
-  const jsonWithTrailingCommas = await readFile(path);
-  const jsonString = removeTrailingCommas(jsonWithTrailingCommas);
-
-  try {
-    return JSON.parse(jsonString);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throwError(`Failed to parse WIP config: ${error.message}`);
-    }
-
-    throw error;
-  }
-}
-
-interface RawConfig {
-  tags: Group[];
-}
-
-class Config {
-  constructor(public readonly tags: Group[]) {}
-
-  public static parse(rawConfig: RawConfig): Config {
-    Config.assertPropertyExists(rawConfig, "tags");
-    return new Config(rawConfig["tags"]);
+  let wipmanDir: Path = cwd;
+  if (raw.relativePath === null) {
+    // No workspace config found for wipman extension - keep wipman dir as workspace dir
+  } else if (raw.relativePath !== undefined) {
+    wipmanDir = wipmanDir.join(raw.relativePath);
   }
 
-  private static assertPropertyExists(rawConfig: RawConfig, propertyName: string): void {
-    if (!rawConfig.hasOwnProperty(propertyName)) {
-      throwError(`Failed to parse config: property "${propertyName}" must be present`);
-    }
+  let debug: boolean | undefined = undefined;
+  if (raw.debug === null) {
+    // No workspace config found
+  } else if (raw.debug !== undefined) {
+    debug = raw.debug;
   }
+
+  return { wipmanDir, debug };
 }
 
-async function readGroupsFromWipConfig(): Promise<Group[]> {
-  // TODO: allow configuring this path via contributes
-  const configFilePath = path.resolve(HOME_PATH, ".config", "wip-manager", "config.json");
-  log.info(`Reading groups from ${configFilePath}`)
-  const configFileExists = await fileExists(configFilePath);
+function informUserThatExtensionCouldntStart({ reason: raw }: { reason: string }): void {
+  // Remove last period (.) if any
+  const reason = raw.slice(-1) === '.' ? raw.slice(0, -1) : raw;
 
-  if (!configFileExists) {
-    throwError(`wipman config file expected at ${configFilePath}, but not found`);
-  }
-
-  const raw = await loadJsonWithTrailingCommas(configFilePath);
-  const config = Config.parse(raw);
-  const groupNames = config.tags;
-
-  return groupNames;
+  const message = `Extension could not start. Reason: ${reason}.` +
+    ` Make sure that either (1) you open the workspace in a wipman directory,` +
+    ` or (2) your workspace contains a wipman directory somewhere` +
+    ` inside and the workspace configuration specifies the wipman directory` +
+    ` relative path, or (3) you open the workspace in an empty directory.` +
+    ` Remember to reload the window to pick up the new wipman configuration.`;
+  log.info(message);
+  vscode.window.showInformationMessage(message);
 }
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-  const language: DocumentSelector = { language: "markdown" };
-  const triggerCharacters = ["#"];
+export function activate(context: vscode.ExtensionContext): void {
 
-  readGroupsFromWipConfig().then(
-    (groupNames: Group[]) => {
-      // TODO: refactor this function into chained functions
-      log.info('Person autocompletion loaded');
-      const completions = buildCompletionsForGroupTags(
-        groupNames,
-        language,
-        triggerCharacters,
-      );
-      context.subscriptions.push(...completions);
-    },
-    (reason: Error) => {
-      vscode.window.showErrorMessage(reason.message);
-    },
-  );
+  try {
+
+    const workspaces = vscode.workspace.workspaceFolders;
+    if (workspaces === undefined) {
+      const reason = "Extension must have a workspace where to work. Extension will not load";
+      informUserThatExtensionCouldntStart({ reason });
+      return;
+    }
+
+    if (workspaces.length > 1) {
+      // TODO: add support for multiple workspaces - if one is detected, just act on
+      // that workspace
+      const reason = `wipman extension can only know how to handle a single` +
+        ` workspace and there are ${workspaces.length} workspaces open`;
+      informUserThatExtensionCouldntStart({ reason });
+      return;
+    }
+
+    const workspaceConfig = parseVSCodeConfig({ raw: vscode.workspace.getConfiguration('wipman') });
+
+    // Generate wipman config from workspace config
+    const config = new Config({ wipmanDir: workspaceConfig.wipmanDir, debug: workspaceConfig.debug });
+
+    const outcome = isWipmanDirectory({ path: config.wipmanDir });
+
+    switch (outcome) {
+
+      case IsWipmanDirectoryOutcome.doesNotExist: {
+        informUserThatExtensionCouldntStart({
+          reason: `expected a wipman directory at ${config.wipmanDir.toString()},` +
+            ` but this path does not exist.`,
+        })
+        return;
+      }
+
+      case IsWipmanDirectoryOutcome.isEmptyDirectory: {
+        // prompt suggestion pop up - dear user, do you want to initialize a wipman directory in this workspace?
+        // const message = "This folder is empty. Do you want me to initialize a wipman directory for you in this directory?";
+        // log.info(message);
+        // vscode.window.showInformationMessage(message);
+        todo("Implement the logic to initialize directory");
+        break;
+      }
+
+      case IsWipmanDirectoryOutcome.isFile: {
+        informUserThatExtensionCouldntStart({
+          reason: `expected a wipman directory at ${config.wipmanDir.toString()},` +
+            ` but this path is a file.`,
+        })
+        return;
+      }
+
+      case IsWipmanDirectoryOutcome.isNotWipmanDir: {
+        informUserThatExtensionCouldntStart({
+          reason: `expected a wipman directory at ${config.wipmanDir.toString()},` +
+            ` but this directory is not a wipman directory.`,
+        })
+        break;
+      }
+
+      case IsWipmanDirectoryOutcome.isWipmanDir:
+        // Initialize wipman before hooking it up to VSCode API
+        const wipmanContext = initialize({ config })
+        const wipmanDirHealthReport = verify(wipmanContext);
+        if (wipmanDirHealthReport.problemsFound) {
+          log.warning(`Found unhealthy wipman directory:`, wipmanDirHealthReport);
+          informUserThatExtensionCouldntStart({
+            reason: `one or more files in your wipman directory are corrupted - see` +
+              ` wipman logs (in the Output tab > "wipman" channel) for more detail`,
+          })
+          return;
+        }
+        log.debug(`wipmanContext.commands:`, wipmanContext.commands);
+
+        // Hook wipman extension up to VSCode API
+        wipmanContext
+          .commands
+          .forEach(
+            ({ name, callback }) => {
+              log.info(`Registering command: ${name}`)
+              const registration = vscode.commands.registerCommand(name, callback);
+              context.subscriptions.push(registration);
+            }
+          );
+
+        vscode.workspace.onDidSaveTextDocument(getVSCodeOnSaveHandler(wipmanContext))
+        break;
+
+      default:
+        throw unreachable(
+          "something went wrong when determining if the workspace directory was a" +
+          " wipman directory"
+        );
+
+    }
+  } catch (error) {
+    log.error(error);
+    vscode.window.showErrorMessage(`Failed to initialize wipman extension, reason: ${error}`)
+  }
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }

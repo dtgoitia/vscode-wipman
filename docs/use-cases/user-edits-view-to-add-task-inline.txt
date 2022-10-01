@@ -1,0 +1,61 @@
+# visualize and edit with sequencediagram.org
+title Add Task inline in View
+
+actor User
+
+participant handleViewFileUpdated
+participant "TransactionManager" as Transaction
+participant "TaskManager" as Task
+participant "ViewManager" as View
+participant "FileManager" as File
+
+note over User: edit view file
+note over User: save view file
+
+activate handleViewFileUpdated
+  handleViewFileUpdated->View:getView(view.id)
+  View-->handleViewFileUpdated:last View
+  note over handleViewFileUpdated: extract Task IDs from last View
+  note over handleViewFileUpdated: find Tasks deleted from View
+  note over handleViewFileUpdated: find Tasks added to View
+
+  loop for each Task to add
+    handleViewFileUpdated->Task:addTask(task)
+    activate Task
+      note over Task:index Task
+      Task-->View:TaskAdded
+      activate View
+        note over View:update index to\nadd Task to View
+        View-->File:TaskAddedToView {viewId,taskId}
+        activate File
+          note over File:read View file
+          note over File:add Task ID to task in View
+          note over File:update View file
+          File->View:updateView(view)
+          note over View:get last View
+          note over View:compare last and updated
+          note over View:no index should update
+          note over View:no task should be updated
+          File-->]:FileUpdated
+        deactivate File
+      deactivate View
+
+      Task-->File:TaskAdded
+      activate File
+        File->Task:getTask(taskId)
+        Task-->File:Task
+        note over File:infer Task File path\nfrom Task ID
+        note over File:create Task File
+        File-->]:FileAdded
+      deactivate File
+    deactivate Task
+  end
+
+  loop for each Task to delete
+    note over handleViewFileUpdated,File:(documented elsewhere)
+  end
+
+  note over handleViewFileUpdated: read View from View file
+  note over handleViewFileUpdated: update View
+
+deactivate handleViewFileUpdated

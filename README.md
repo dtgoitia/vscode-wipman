@@ -47,6 +47,31 @@
 
   This will compile the extension with `typescript` (same as `npm run vscode:prepublish`) and upload it to the extension marketplace.
 
+* Build and install extension locally (no publishing):
+
+  1. Build extension into a VSIX file:
+
+      ```bash
+      npm run build
+      ```
+  
+  1. Install VSIX file:
+
+      - via UI: open VSCode Command Pallete (Ctrl+P) and select _Extensions: Install from VSIX..._
+      - via CLI:
+
+        ```shell
+        code --install-extension ./path/to/extension.vsix
+        ```
+
+### Troubleshooting
+
+* I've installed the extension and I want to see the logs:
+
+  1. Open VSCode Command Pallete.
+  2. Select _Show logs_.
+  3. Select _Extension Host_.
+
 ## Known Issues
 
 ...

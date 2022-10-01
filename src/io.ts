@@ -1,65 +1,133 @@
 import * as fs from "fs";
 import * as path from "path";
 
-export async function fileExists(path: string): Promise<boolean> {
-  return new Promise(resolve => {
-    fs.access(path, fs.constants.F_OK, err => {
-      if (err) {
-        resolve(false);
-      } else {
-        resolve(true);
-      }
-    });
-  });
-}
-
 export class Path {
   /**
    * Equivalent to Python's pathlib.Path
    */
-  constructor(private readonly path: string) {}
+  constructor(private readonly path: string) { }
 
   public toString(): string {
     return this.path;
   }
 
   public name(): string {
+    return path.parse(this.path).base;
+  }
+
+  public stem(): string | undefined {
+    if (this.isDirectory()) {
+      return undefined;
+    }
+
     return path.parse(this.path).name;
   }
 
+  public extension(): string | undefined {
+    if (this.isDirectory()) {
+      return undefined;
+    }
+    const extension = path.parse(this.path).ext;
+    if (extension === "") {
+      return undefined;
+    }
+
+    return extension;
+  }
+
   public parent(): Path {
-    // TODO: remove if this is not used
     return new Path(path.parse(this.path).dir);
   }
 
-  public async exists(): Promise<boolean> {
-    return fileExists(this.path);
+  public exists(): boolean {
+    return fs.existsSync(this.path);
   }
 
-  public join(child: string): Path {
-    return new Path(path.join(this.path, child));
+  public join(child: string | Path): Path {
+    return new Path(path.join(this.path, child.toString()));
   }
 
-  public async walk(): Promise<Path[]> {
-    if (await this.isFile()) {
+  /**
+   * Returns all directories and files inside the path.
+   */
+  public walk(): Path[] {
+    if (this.exists() === false) {
       return [];
     }
 
-    const children = await fs.promises.readdir(this.path);
+    if (this.isFile()) {
+      return [];
+    }
+
+    const children = fs.readdirSync(this.path);
     return children.map(file => this.join(file));
   }
 
-  public async isFile(): Promise<boolean> {
-    const stats = await fs.promises.lstat(this.path);
+  public isFile(): boolean {
+    const stats = fs.lstatSync(this.path);
     return stats.isFile();
   }
-  public async isDirectory(): Promise<boolean> {
-    const stats = await fs.promises.lstat(this.path);
+  public isDirectory(): boolean {
+    const stats = fs.lstatSync(this.path);
     return stats.isDirectory();
   }
 
-  public async readText(): Promise<string> {
+  public readText(): string {
     // Note: EISDIR = "Error, Is Directory"
-    return fs.promises.readFile(this.path, {encoding: "utf-8"});
+    return fs.readFileSync(this.path, { encoding: "utf-8" });
+  }
+
+  public writeText(text: string): void {
+    if (this.exists() === false) {
+      this.parent().makeDirectory();
+    }
+
+    return fs.writeFileSync(this.path, text);
+  }
+
+  public makeDirectory(): void {
+    fs.mkdirSync(this.path, { recursive: true });
+  }
+
+  public equals(path: Path): boolean {
+    return this.path === path.path;
+  }
+
+  public lastUpdated(): Date {
+    const stats = fs.statSync(this.path);
+    return stats.mtime
+  }
+
+  public delete(): void {
+    return fs.rmSync(this.path, { recursive: true, force: true });
+  }
+
+  /**
+   * NOTE: it's the callers responsibility to add any desired new-line characters
+   */
+  public append(characters: string): void {
+    fs.appendFileSync(this.path, characters);
+  }
+
+  public isEmpty(): boolean {
+    try {
+      const openDir = fs.opendirSync(this.path);
+      const isEmpty = openDir.readSync() === null;
+      openDir.closeSync();
+      return isEmpty;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  public touch(): void {
+    const now = new Date();
+    try {
+      // If exists, update "update time"
+      fs.utimesSync(this.path, now, now);
+    } catch (error) {
+      // else, just create it
+      this.writeText("");
+    }
   }
 }

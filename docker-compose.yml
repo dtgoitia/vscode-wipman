@@ -1,0 +1,15 @@
+version: "3.6"
+
+services:
+
+  # https://hub.docker.com/r/mtlynch/firestore-emulator
+  firestore:
+    image: mtlynch/firestore-emulator
+    ports:
+      - "8723:8723"
+    environment:
+      - PORT=8723
+      - FIRESTORE_PROJECT_ID=${FIRESTORE_PROJECT_ID:-dummy-project-id}
+  
+  # full blown Firebase locally:
+  # https://github.com/matthewkrupnik/docker-firestore-emulator-with-ui

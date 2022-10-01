@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { DocumentSelector } from "vscode";
 import { TextDecoder } from "util";
 import log from "./logs";
+import { fileExists } from "./io";
 
 const HOME_PATH = `${os.homedir()}`;
 
@@ -49,18 +50,6 @@ function buildCompletionsForGroupTags(
     });
 
   return autocompletionPerGroupTag;
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  return new Promise(resolve => {
-    fs.access(path, fs.constants.F_OK, err => {
-      if (err) {
-        resolve(false);
-      } else {
-        resolve(true);
-      }
-    });
-  });
 }
 
 function throwError(message: string): void {

@@ -8,7 +8,7 @@
   npm install  # do not use `npm ci`
   ```
 
-* Debug the extension in VSCode:
+* Develop/debug the extension in VSCode:
 
   1. Run TypeScript compiler: `npm run watch`.
   1. Open `src/extension.ts` in your editor.

@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { DocumentSelector } from "vscode";
 import { TextDecoder } from "util";
+import log from "./logs";
 
 const HOME_PATH = `${os.homedir()}`;
 
@@ -63,7 +64,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 function throwError(message: string): void {
-  console.error(message);
+  log.error(message);
   throw new Error(message);
 }
 
@@ -122,6 +123,7 @@ class Config {
 async function readGroupsFromWipConfig(): Promise<Group[]> {
   // TODO: allow configuring this path via contributes
   const configFilePath = path.resolve(HOME_PATH, ".config", "wip-manager", "config.json");
+  log.info(`Reading groups from ${configFilePath}`)
   const configFileExists = await fileExists(configFilePath);
 
   if (!configFileExists) {
@@ -144,6 +146,7 @@ export function activate(context: vscode.ExtensionContext) {
   readGroupsFromWipConfig().then(
     (groupNames: Group[]) => {
       // TODO: refactor this function into chained functions
+      log.info('Person autocompletion loaded');
       const completions = buildCompletionsForGroupTags(
         groupNames,
         language,
